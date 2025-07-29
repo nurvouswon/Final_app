@@ -7,6 +7,24 @@ from pybaseball import statcast
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 
+# -------------- Connect & Set Schema --------------
+schema_name = st.secrets["snowflake"]["schema"].upper()
+
+conn = snowflake.connector.connect(
+    user=st.secrets["snowflake"]["user"],
+    password=st.secrets["snowflake"]["password"],
+    account=st.secrets["snowflake"]["account"],
+    warehouse=st.secrets["snowflake"]["warehouse"],
+    database=st.secrets["snowflake"]["database"],
+    schema=st.secrets["snowflake"]["schema"],  # set schema here, casing doesn't matter here
+    autocommit=False,  # We'll manually commit DDL
+)
+cur = conn.cursor()
+
+# Explicitly use schema to avoid ambiguity, uppercase as Snowflake expects
+cur.execute(f"USE SCHEMA {schema_name}")
+conn.commit()
+
 # === Utility functions ===
 
 def dedup_columns(df):
@@ -41,22 +59,6 @@ def parse_custom_weather_string_v2(s):
     wind_dir_string = f"{wind_vector} {wind_field_dir}".strip()
     return pd.Series([temp, wind_vector, wind_field_dir, wind_mph, humidity, condition, wind_dir_string],
                      index=['temp','wind_vector','wind_field_dir','wind_mph','humidity','condition','wind_dir_string'])
-
-# === Snowflake connection ===
-
-@st.cache_resource(show_spinner=False)
-def get_snowflake_conn():
-    return snowflake.connector.connect(
-        user=st.secrets["sf_user"],
-        password=st.secrets["sf_password"],
-        account=st.secrets["sf_account"],
-        warehouse=st.secrets["sf_warehouse"],
-        database=st.secrets["sf_database"],
-        schema=st.secrets["sf_schema"],
-        role=st.secrets["sf_role"]
-    )
-
-conn = get_snowflake_conn()
 
 # === Streamlit UI and logic ===
 
