@@ -8,22 +8,22 @@ import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 
 # -------------- Connect & Set Schema --------------
-schema_name = st.secrets["snowflake"]["schema"].upper()
+@st.experimental_singleton
+def get_snowflake_conn():
+    conn = snowflake.connector.connect(
+        user=st.secrets["snowflake"]["user"],
+        password=st.secrets["snowflake"]["password"],
+        account=st.secrets["snowflake"]["account"],
+        warehouse=st.secrets["snowflake"]["warehouse"],
+        database=st.secrets["snowflake"]["database"],
+        schema=st.secrets["snowflake"]["schema"],  # set schema here, casing doesn't matter here
+        autocommit=False,  # We'll manually commit DDL
+    )
+    with conn.cursor() as cur:
+        cur.execute(f"USE SCHEMA {st.secrets['snowflake']['schema'].upper()}")
+    return conn
 
-conn = snowflake.connector.connect(
-    user=st.secrets["snowflake"]["user"],
-    password=st.secrets["snowflake"]["password"],
-    account=st.secrets["snowflake"]["account"],
-    warehouse=st.secrets["snowflake"]["warehouse"],
-    database=st.secrets["snowflake"]["database"],
-    schema=st.secrets["snowflake"]["schema"],  # set schema here, casing doesn't matter here
-    autocommit=False,  # We'll manually commit DDL
-)
-cur = conn.cursor()
-
-# Explicitly use schema to avoid ambiguity, uppercase as Snowflake expects
-cur.execute(f"USE SCHEMA {schema_name}")
-conn.commit()
+conn = get_snowflake_conn()
 
 # === Utility functions ===
 
@@ -96,10 +96,10 @@ if st.button("Fetch Event Data"):
 
     st.dataframe(df_events.head(20))
 
-    csv_bytes = df_events.to_csv(index=False).encode()
+    csv_bytes = df_events.to_csv(index=False).encode('utf-8')
     st.download_button("Download Raw Event Data CSV", csv_bytes, file_name="statcast_raw_event_data.csv")
 
-    if st.button("Upload Event Data to Snowflake"):
+    if 'df_events' in locals() and st.button("Upload Event Data to Snowflake"):
         with st.spinner("Uploading event data to Snowflake..."):
             try:
                 with conn.cursor() as cur:
@@ -139,7 +139,7 @@ if matchups_file:
 
         st.dataframe(df_matchups.head(20))
 
-        if st.button("Upload Matchups to Snowflake"):
+        if df_matchups is not None and st.button("Upload Matchups to Snowflake"):
             with st.spinner("Uploading matchup data to Snowflake..."):
                 try:
                     with conn.cursor() as cur:
@@ -169,7 +169,7 @@ if submitted:
         df_features = pd.read_sql(query, conn)
         st.write(f"Downloaded {len(df_features):,} rows of features for {feature_date}")
         st.dataframe(df_features.head(20))
-        csv_bytes = df_features.to_csv(index=False).encode()
+        csv_bytes = df_features.to_csv(index=False).encode('utf-8')
         st.download_button("Download Features CSV", csv_bytes, file_name=f"today_features_{feature_date}.csv")
     except Exception as e:
         st.error(f"Error fetching features: {e}")
